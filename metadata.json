@@ -1,0 +1,5 @@
+{
+  "name": "Extractor and Collector",
+  "description": "An application that receives a compressed file in ZIP format, extracts all files, combines their content into a single .txt file, and makes it available for download.",
+  "requestFramePermissions": []
+}
