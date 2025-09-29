@@ -16,7 +16,7 @@ const App: React.FC = () => {
     const [combinedContent, setCombinedContent] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
 
-    const handleFileProcess = useCallback(async (file: File) => {
+    const handleFileProcess = useCallback(async (file: File, extensions: string[]) => {
         if (!file) return;
 
         setStatus(ProcessStatus.Processing);
@@ -27,23 +27,39 @@ const App: React.FC = () => {
 
         try {
             const zip = await JSZip.loadAsync(file);
-            let contentBuilder = `Conteúdo coletado do arquivo: ${file.name}\n\n`;
+            let contentBuilder = `Conteúdo coletado do arquivo: ${file.name}\n`;
+            if (extensions.length > 0) {
+                contentBuilder += `Filtrando por extensões: ${extensions.join(', ')}\n\n`;
+            } else {
+                contentBuilder += `\n`;
+            }
+
             const fileNames: string[] = [];
             
             const filePromises = Object.keys(zip.files).map(async (filename) => {
                 const zipEntry = zip.files[filename];
                 if (!zipEntry.dir) {
-                    fileNames.push(filename);
-                    const fileContent = await zipEntry.async('string');
-                    contentBuilder += `========================================\n`;
-                    contentBuilder += `Arquivo: ${filename}\n`;
-                    contentBuilder += `========================================\n\n`;
-                    contentBuilder += fileContent;
-                    contentBuilder += `\n\n`;
+                    const shouldInclude = extensions.length === 0 || extensions.some(ext => filename.toLowerCase().endsWith(ext));
+
+                    if (shouldInclude) {
+                        fileNames.push(filename);
+                        const fileContent = await zipEntry.async('string');
+                        contentBuilder += `========================================\n`;
+                        contentBuilder += `Arquivo: ${filename}\n`;
+                        contentBuilder += `========================================\n\n`;
+                        contentBuilder += fileContent;
+                        contentBuilder += `\n\n`;
+                    }
                 }
             });
 
             await Promise.all(filePromises);
+
+            if (fileNames.length === 0) {
+                setError(`Nenhum arquivo correspondente às extensões especificadas (${extensions.join(', ')}) foi encontrado no arquivo ZIP.`);
+                setStatus(ProcessStatus.Error);
+                return;
+            }
 
             setExtractedFileNames(fileNames.sort());
             setCombinedContent(contentBuilder);
