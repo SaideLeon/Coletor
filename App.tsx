@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { ProcessStatus } from './types';
-import FileUploader from './components/FileUploader';
+import InputView from './components/InputView';
 import ProcessingView from './components/ProcessingView';
 import ResultsView from './components/ResultsView';
 
@@ -18,7 +18,11 @@ const App: React.FC = () => {
     const handleFileProcess = useCallback(async (file: File, extensions: string[]) => {
         if (!file) return;
 
-        setStatus(ProcessStatus.Processing);
+        // For GitHub imports, status is already 'Processing'
+        if (status !== ProcessStatus.Processing) {
+            setStatus(ProcessStatus.Processing);
+        }
+        
         setUploadedFile(file);
         setExtractedFileNames([]);
         setCombinedContent('');
@@ -55,7 +59,7 @@ const App: React.FC = () => {
             await Promise.all(filePromises);
 
             if (fileNames.length === 0) {
-                setError(`Nenhum arquivo correspondente às extensões especificadas (${extensions.join(', ')}) foi encontrado no arquivo ZIP.`);
+                setError(`Nenhum arquivo correspondente às extensões especificadas (${extensions.join(', ')}) foi encontrado.`);
                 setStatus(ProcessStatus.Error);
                 return;
             }
@@ -68,7 +72,61 @@ const App: React.FC = () => {
             setError('Falha ao processar o arquivo. Certifique-se de que é um arquivo ZIP válido e não está corrompido.');
             setStatus(ProcessStatus.Error);
         }
-    }, []);
+    }, [status]);
+
+    const handleGitHubImport = useCallback(async (repoUrl: string, extensions: string[]): Promise<void> => {
+        const match = repoUrl.match(/github\.com\/([^/]+)\/([^/]+)/);
+        if (!match) {
+            setError('URL do repositório GitHub inválida. Use o formato: https://github.com/owner/repo');
+            setStatus(ProcessStatus.Error);
+            return;
+        }
+        const owner = match[1];
+        const repo = match[2].replace(/\.git$/, '');
+
+        setStatus(ProcessStatus.Processing);
+        setUploadedFile({ name: `GitHub: ${owner}/${repo}`, size: 0, type: 'github/repo' } as File);
+        setError(null);
+        setCombinedContent('');
+        setExtractedFileNames([]);
+
+        const proxyUrl = 'https://api.allorigins.win/raw?url=';
+        const mainZipUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/main.zip`;
+        const masterZipUrl = `https://github.com/${owner}/${repo}/archive/refs/heads/master.zip`;
+
+        const tryFetch = async (url: string) => {
+            const proxiedUrl = `${proxyUrl}${encodeURIComponent(url)}`;
+            const response = await fetch(proxiedUrl);
+            if (!response.ok || response.headers.get('content-type')?.includes('text/html')) {
+                throw new Error(`Falha ao buscar de ${url} via proxy.`);
+            }
+            return response.blob();
+        };
+
+        try {
+            let blob: Blob;
+            let branchName = 'main';
+            try {
+                blob = await tryFetch(mainZipUrl);
+            } catch (e) {
+                console.warn("Fetching from 'main' branch failed, trying 'master'.", e);
+                try {
+                    blob = await tryFetch(masterZipUrl);
+                    branchName = 'master';
+                } catch (e2) {
+                    console.error("Fetching from 'master' branch also failed.", e2);
+                    throw new Error('Não foi possível buscar o repositório. Verifique se a URL está correta e se o repositório é público com um branch `main` ou `master`.');
+                }
+            }
+            
+            const file = new File([blob], `${repo}-${branchName}.zip`, { type: 'application/zip' });
+            await handleFileProcess(file, extensions);
+        } catch (err) {
+            console.error("Error fetching GitHub repository:", err);
+            setError(err instanceof Error ? err.message : 'Falha ao buscar o repositório do GitHub.');
+            setStatus(ProcessStatus.Error);
+        }
+    }, [handleFileProcess]);
 
     const handleReset = () => {
         setStatus(ProcessStatus.Idle);
@@ -81,7 +139,7 @@ const App: React.FC = () => {
     const renderContent = () => {
         switch (status) {
             case ProcessStatus.Idle:
-                return <FileUploader onFileSelect={handleFileProcess} />;
+                return <InputView onFileSelect={handleFileProcess} onGitHubImport={handleGitHubImport} />;
             case ProcessStatus.Processing:
                 return <ProcessingView fileName={uploadedFile?.name || ''} />;
             case ProcessStatus.Success:
@@ -119,7 +177,7 @@ const App: React.FC = () => {
                         Coletor de Código
                     </h1>
                     <p className="text-gray-400 mt-2">
-                        Envie um arquivo .ZIP para extrair e combinar o conteúdo de todos os arquivos de texto.
+                        Envie um arquivo .ZIP ou importe um repositório do GitHub para extrair e combinar o conteúdo.
                     </p>
                 </header>
                 <main className="bg-gray-800/50 border border-gray-700 rounded-2xl shadow-2xl p-6 md:p-8 backdrop-blur-sm">
