@@ -1,7 +1,6 @@
 
 import React, { useState, useCallback } from 'react';
 import { ProcessStatus } from './types';
-import { OUTPUT_FILENAME } from './constants';
 import FileUploader from './components/FileUploader';
 import ProcessingView from './components/ProcessingView';
 import ResultsView from './components/ResultsView';
@@ -91,7 +90,6 @@ const App: React.FC = () => {
                         fileName={uploadedFile?.name || ''}
                         extractedFileNames={extractedFileNames}
                         combinedContent={combinedContent}
-                        outputFileName={OUTPUT_FILENAME}
                         onReset={handleReset}
                     />
                 );
